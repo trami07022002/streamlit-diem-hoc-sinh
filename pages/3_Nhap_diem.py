@@ -21,49 +21,55 @@ df = pd.read_excel(file_path)
 # Danh sách môn
 subjects = ["Toan", "Anh", "Van", "Ly", "Hoa", "Sinh", "Tin"]
 
-# Tạo cột ghi chú nếu chưa có
+# Tạo cột điểm & ghi chú nếu thiếu
 for sub in subjects:
+    if sub not in df.columns:
+        df[sub] = None
     note_col = f"Ghi_chu_{sub}"
     if note_col not in df.columns:
         df[note_col] = ""
 
+# Tạo cột tổng hợp nếu thiếu
+if "Tong_hop" not in df.columns:
+    df["Tong_hop"] = ""
+
 # ----------------------------
-# ⭐ PHÂN QUYỀN HIỂN THỊ VÀ NHẬP
+# ⭐ PHÂN QUYỀN
 # ----------------------------
 
 if role == "GVCN":
-    # GVCN chỉ nhập được 1 cột Tổng hợp
+    # GVCN xem toàn bộ nhưng chỉ nhập cột Tổng hợp
     editable_cols = ["Tong_hop"]
-
-    # Các cột khác chỉ để xem
     disabled_cols = [c for c in df.columns if c not in editable_cols]
 
-    st.info("🧑‍🏫 **GVCN chỉ được nhập cột Tổng hợp**.\nCác cột khác hiển thị để xem kết quả từ giáo viên bộ môn.")
+    st.info(
+        "🧑‍🏫 **GVCN chỉ được nhập cột Tổng hợp.**\n"
+        "Các cột điểm & ghi chú của GV bộ môn sẽ hiển thị để xem."
+    )
 
 elif role in subjects:
-    # Giáo viên bộ môn: chỉ được nhập điểm + ghi chú của môn mình
+    # Giáo viên bộ môn chỉ xem thông tin & cột của mình
     editable_cols = [role, f"Ghi_chu_{role}"]
 
-    # Ẩn tất cả môn khác
-    allowed_view = ["STT", "Ho_va_ten", "Ngay_sinh", "Gioi_tinh"] + editable_cols
-
-    df = df[allowed_view]
+    required_cols = ["STT", "Ho_va_ten", "Ngay_sinh", "Gioi_tinh"] + editable_cols
+    df = df[required_cols]
 
     disabled_cols = [c for c in df.columns if c not in editable_cols]
 
     st.info(f"👨‍🏫 Bạn đang nhập điểm môn **{role}**.")
 
 else:
-    st.error("Vai trò không hợp lệ.")
+    st.error("❌ Vai trò không hợp lệ.")
     st.stop()
+
 
 # ----------------------------
 # ⭐ BẢNG NHẬP LIỆU
 # ----------------------------
 edited_df = st.data_editor(
     df,
-    use_container_width=True,
     hide_index=True,
+    use_container_width=True,
     disabled=disabled_cols
 )
 
@@ -72,16 +78,20 @@ edited_df = st.data_editor(
 # ----------------------------
 
 if st.button("💾 Lưu dữ liệu"):
-    # Đọc lại file gốc, vì giáo viên bộ môn chỉ nhìn thấy 1 phần bảng
     original = pd.read_excel(file_path)
 
     if role == "GVCN":
         original["Tong_hop"] = edited_df["Tong_hop"]
 
     elif role in subjects:
-        original[role] = edited_df[role]
-        original[f"Ghi_chu_{role}"] = edited_df[f"Ghi_chu_{role}"]
+        # Gộp lại đúng hàng theo STT
+        # → cực quan trọng để tránh lệch dữ liệu !!!
+        for col in [role, f"Ghi_chu_{role}"]:
+            original[col] = original.merge(
+                edited_df[["STT", col]],
+                on="STT",
+                how="left"
+            )[col + "_y"]
 
     original.to_excel(file_path, index=False)
     st.success("✔ Đã lưu thành công!")
-
